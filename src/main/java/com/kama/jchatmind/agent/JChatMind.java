@@ -4,15 +4,20 @@ import com.kama.jchatmind.converter.ChatMessageConverter;
 import com.kama.jchatmind.message.SseMessage;
 import com.kama.jchatmind.model.dto.ChatMessageDTO;
 import com.kama.jchatmind.model.dto.KnowledgeBaseDTO;
+import com.kama.jchatmind.model.entity.AgentStepTrace;
+import com.kama.jchatmind.model.entity.AgentTrace;
+import com.kama.jchatmind.model.entity.ToolCallTrace;
 import com.kama.jchatmind.model.response.CreateChatMessageResponse;
 import com.kama.jchatmind.model.vo.ChatMessageVO;
 import com.kama.jchatmind.service.ChatMessageFacadeService;
 import com.kama.jchatmind.service.SseService;
+import com.kama.jchatmind.service.TraceService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.*;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -24,7 +29,9 @@ import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -44,6 +51,9 @@ public class JChatMind {
 
     // 交互实例
     private ChatClient chatClient;
+
+    // 使用的模型名称（trace 记录用）
+    private String modelName;
 
     // 状态
     private AgentState agentState;
@@ -84,6 +94,12 @@ public class JChatMind {
     // AI 返回的，已经持久化，但是需要 sse 发给前端的消息
     private final List<ChatMessageDTO> pendingChatMessages = new ArrayList<>();
 
+    // ========== Trace 相关字段 ==========
+    private TraceService traceService;
+    private String traceId;               // 本次 run() 的 trace id（startTrace 失败则为 null）
+    private int totalPromptTokens;        // 累计 prompt tokens
+    private int totalCompletionTokens;    // 累计 completion tokens
+
     public JChatMind() {
     }
 
@@ -92,6 +108,7 @@ public class JChatMind {
                      String description,
                      String systemPrompt,
                      ChatClient chatClient,
+                     String modelName,
                      Integer maxMessages,
                      List<Message> memory,
                      List<ToolCallback> availableTools,
@@ -99,7 +116,8 @@ public class JChatMind {
                      String chatSessionId,
                      SseService sseService,
                      ChatMessageFacadeService chatMessageFacadeService,
-                     ChatMessageConverter chatMessageConverter
+                     ChatMessageConverter chatMessageConverter,
+                     TraceService traceService
     ) {
         this.agentId = agentId;
         this.name = name;
@@ -107,6 +125,7 @@ public class JChatMind {
         this.systemPrompt = systemPrompt;
 
         this.chatClient = chatClient;
+        this.modelName = modelName;
 
         this.availableTools = availableTools;
         this.availableKbs = availableKbs;
@@ -116,6 +135,8 @@ public class JChatMind {
 
         this.chatMessageFacadeService = chatMessageFacadeService;
         this.chatMessageConverter = chatMessageConverter;
+
+        this.traceService = traceService;
 
         this.agentState = AgentState.IDLE;
 
@@ -217,96 +238,171 @@ public class JChatMind {
     }
 
     // thinkPrompt 应该放到 system 中还是
-    private boolean think() {
-        String thinkPrompt = """
-                现在你是一个智能的的具体「决策模块」
-                请根据当前对话上下文，决定下一步的动作。
-                                \s
-                【额外信息】
-                - 你目前拥有的知识库列表以及描述：%s
-                - 如果有缺失的上下文时，优先从知识库中进行搜索
-                """.formatted(this.availableKbs);
+    private boolean think(int stepIndex) {
+        long startNanos = System.nanoTime();
+        AgentStepTrace thinkStep = traceService.startStep(
+                traceId, stepIndex, TraceService.PHASE_THINK, modelName);
+        String thinkStepId = thinkStep == null ? null : thinkStep.getId();
 
-        // 将 thinkPrompt 通过 .user(thinkPrompt) 的方式构造进入 chatClient 中
-        // 既能让每次 messageList 的最后一条是 本条提示词，
-        // 又能够避免将 thinkPrompt 加入到聊天记录中
-        Prompt prompt = Prompt.builder()
-                .chatOptions(this.chatOptions)
-                .messages(this.chatMemory.get(this.chatSessionId))
-                .build();
+        try {
+            String thinkPrompt = """
+                    现在你是一个智能的的具体「决策模块」
+                    请根据当前对话上下文，决定下一步的动作。
+                                    \s
+                    【额外信息】
+                    - 你目前拥有的知识库列表以及描述：%s
+                    - 如果有缺失的上下文时，优先从知识库中进行搜索
+                    """.formatted(this.availableKbs);
 
-        this.lastChatResponse = this.chatClient
-                .prompt(prompt)
-                .system(thinkPrompt)
-                .toolCallbacks(this.availableTools.toArray(new ToolCallback[0]))
-                .call()
-                .chatClientResponse()
-                .chatResponse();
+            // 将 thinkPrompt 通过 .user(thinkPrompt) 的方式构造进入 chatClient 中
+            // 既能让每次 messageList 的最后一条是 本条提示词，
+            // 又能够避免将 thinkPrompt 加入到聊天记录中
+            Prompt prompt = Prompt.builder()
+                    .chatOptions(this.chatOptions)
+                    .messages(this.chatMemory.get(this.chatSessionId))
+                    .build();
 
-        Assert.notNull(lastChatResponse, "Last chat client response cannot be null");
+            this.lastChatResponse = this.chatClient
+                    .prompt(prompt)
+                    .system(thinkPrompt)
+                    .toolCallbacks(this.availableTools.toArray(new ToolCallback[0]))
+                    .call()
+                    .chatClientResponse()
+                    .chatResponse();
 
-        AssistantMessage output = this.lastChatResponse
-                .getResult()
-                .getOutput();
+            Assert.notNull(lastChatResponse, "Last chat client response cannot be null");
 
-        List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
+            AssistantMessage output = this.lastChatResponse
+                    .getResult()
+                    .getOutput();
 
-        // 保存
-        saveMessage(output);
-        refreshPendingMessages();
+            List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
 
-        // 打印工具调用
-        logToolCalls(toolCalls);
+            // 保存
+            saveMessage(output);
+            refreshPendingMessages();
 
-        // 如果工具调用不为空，则进入执行阶段
-        return !toolCalls.isEmpty();
+            // 打印工具调用
+            logToolCalls(toolCalls);
+
+            int[] tokens = extractTokens(this.lastChatResponse);
+            totalPromptTokens += tokens[0];
+            totalCompletionTokens += tokens[1];
+
+            long latencyMs = (System.nanoTime() - startNanos) / 1_000_000L;
+            traceService.endStep(thinkStepId, TraceService.STATUS_SUCCESS,
+                    tokens[0], tokens[1], latencyMs, null);
+
+            // 如果工具调用不为空，则进入执行阶段
+            return !toolCalls.isEmpty();
+        } catch (RuntimeException e) {
+            long latencyMs = (System.nanoTime() - startNanos) / 1_000_000L;
+            traceService.endStep(thinkStepId, TraceService.STATUS_ERROR,
+                    0, 0, latencyMs, e.getMessage());
+            throw e;
+        }
+    }
+
+    private int[] extractTokens(ChatResponse response) {
+        if (response == null || response.getMetadata() == null) return new int[]{0, 0};
+        Usage usage = response.getMetadata().getUsage();
+        if (usage == null) return new int[]{0, 0};
+        int pt = usage.getPromptTokens() != null ? usage.getPromptTokens().intValue() : 0;
+        int ct = usage.getCompletionTokens() != null ? usage.getCompletionTokens().intValue() : 0;
+        return new int[]{pt, ct};
     }
 
     // 执行
-    private void execute() {
+    private void execute(int stepIndex) {
         Assert.notNull(this.lastChatResponse, "Last chat client response cannot be null");
 
         if (!this.lastChatResponse.hasToolCalls()) {
             return;
         }
 
-        Prompt prompt = Prompt.builder()
-                .messages(this.chatMemory.get(this.chatSessionId))
-                .chatOptions(this.chatOptions)
-                .build();
+        long stepStart = System.nanoTime();
+        AgentStepTrace execStep = traceService.startStep(
+                traceId, stepIndex, TraceService.PHASE_EXECUTE, null);
+        String execStepId = execStep == null ? null : execStep.getId();
 
-        ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, this.lastChatResponse);
+        // 预登记每个 ToolCall: tool_call_id (模型返回) -> 我们持久化的 tool_call_trace id
+        List<AssistantMessage.ToolCall> outgoing = this.lastChatResponse
+                .getResult().getOutput().getToolCalls();
+        Map<String, String> toolCallIdToTraceId = new HashMap<>();
+        for (AssistantMessage.ToolCall tc : outgoing) {
+            ToolCallTrace traced = traceService.startToolCall(
+                    traceId, execStepId, tc.name(), tc.arguments());
+            if (traced != null) {
+                toolCallIdToTraceId.put(tc.id(), traced.getId());
+            }
+        }
 
-        this.chatMemory.clear(this.chatSessionId);
-        this.chatMemory.add(this.chatSessionId, toolExecutionResult.conversationHistory());
+        try {
+            Prompt prompt = Prompt.builder()
+                    .messages(this.chatMemory.get(this.chatSessionId))
+                    .chatOptions(this.chatOptions)
+                    .build();
 
-        ToolResponseMessage toolResponseMessage = (ToolResponseMessage) toolExecutionResult
-                .conversationHistory()
-                .get(toolExecutionResult.conversationHistory().size() - 1);
+            ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, this.lastChatResponse);
 
-        String collect = toolResponseMessage.getResponses()
-                .stream()
-                .map(resp -> "工具" + resp.name() + "的返回结果为：" + resp.responseData())
-                .collect(Collectors.joining("\n"));
+            this.chatMemory.clear(this.chatSessionId);
+            this.chatMemory.add(this.chatSessionId, toolExecutionResult.conversationHistory());
 
-        log.info("工具调用结果：{}", collect);
+            ToolResponseMessage toolResponseMessage = (ToolResponseMessage) toolExecutionResult
+                    .conversationHistory()
+                    .get(toolExecutionResult.conversationHistory().size() - 1);
 
-        // 保存工具调用
-        saveMessage(toolResponseMessage);
-        refreshPendingMessages();
+            String collect = toolResponseMessage.getResponses()
+                    .stream()
+                    .map(resp -> "工具" + resp.name() + "的返回结果为：" + resp.responseData())
+                    .collect(Collectors.joining("\n"));
 
-        if (toolResponseMessage.getResponses()
-                .stream()
-                .anyMatch(resp -> resp.name().equals("terminate"))) {
-            this.agentState = AgentState.FINISHED;
-            log.info("任务结束");
+            log.info("工具调用结果：{}", collect);
+
+            // 将工具响应回写到对应的 tool_call_trace
+            for (ToolResponseMessage.ToolResponse resp : toolResponseMessage.getResponses()) {
+                String tcTraceId = toolCallIdToTraceId.remove(resp.id());
+                if (tcTraceId != null) {
+                    traceService.endToolCall(tcTraceId,
+                            TraceService.STATUS_SUCCESS, resp.responseData(), null, null);
+                }
+            }
+            // 没有对应响应的 tool_call（罕见，防御性处理）
+            for (String leftover : toolCallIdToTraceId.values()) {
+                traceService.endToolCall(leftover,
+                        TraceService.STATUS_ERROR, null, null, "no tool response received");
+            }
+
+            // 保存工具调用
+            saveMessage(toolResponseMessage);
+            refreshPendingMessages();
+
+            if (toolResponseMessage.getResponses()
+                    .stream()
+                    .anyMatch(resp -> resp.name().equals("terminate"))) {
+                this.agentState = AgentState.FINISHED;
+                log.info("任务结束");
+            }
+
+            long latencyMs = (System.nanoTime() - stepStart) / 1_000_000L;
+            traceService.endStep(execStepId, TraceService.STATUS_SUCCESS, 0, 0, latencyMs, null);
+        } catch (RuntimeException e) {
+            long latencyMs = (System.nanoTime() - stepStart) / 1_000_000L;
+            // 未能完成的 tool_call 标记为 ERROR
+            for (String leftover : toolCallIdToTraceId.values()) {
+                traceService.endToolCall(leftover,
+                        TraceService.STATUS_ERROR, null, null, e.getMessage());
+            }
+            traceService.endStep(execStepId, TraceService.STATUS_ERROR,
+                    0, 0, latencyMs, e.getMessage());
+            throw e;
         }
     }
 
     // 单个步骤模板
-    private void step() {
-        if (think()) {
-            execute();
+    private void step(int stepIndex) {
+        if (think(stepIndex)) {
+            execute(stepIndex);
         } else { // 没有工具调用
             agentState = AgentState.FINISHED;
         }
@@ -318,11 +414,20 @@ public class JChatMind {
             throw new IllegalStateException("Agent is not idle");
         }
 
+        long runStart = System.nanoTime();
+        AgentTrace trace = traceService.startTrace(chatSessionId, agentId, extractLastUserMessage());
+        this.traceId = trace == null ? null : trace.getId();
+
+        int actualSteps = 0;
+        String runStatus = TraceService.STATUS_FINISHED;
+        String runError = null;
+
         try {
             for (int i = 0; i < MAX_STEPS && agentState != AgentState.FINISHED; i++) {
                 // 当前步骤，用于实现 Agent Loop
                 int currentStep = i + 1;
-                step();
+                step(currentStep);
+                actualSteps = currentStep;
                 if (currentStep >= MAX_STEPS) {
                     agentState = AgentState.FINISHED;
                     log.warn("Max steps reached, stopping agent");
@@ -331,9 +436,28 @@ public class JChatMind {
             agentState = AgentState.FINISHED;
         } catch (Exception e) {
             agentState = AgentState.ERROR;
+            runStatus = TraceService.STATUS_ERROR;
+            runError = e.getMessage();
             log.error("Error running agent", e);
             throw new RuntimeException("Error running agent", e);
+        } finally {
+            long totalLatencyMs = (System.nanoTime() - runStart) / 1_000_000L;
+            traceService.endTrace(traceId, runStatus, actualSteps, totalLatencyMs,
+                    totalPromptTokens, totalCompletionTokens, runError);
         }
+    }
+
+    // 从 chatMemory 中取最近一条 UserMessage，用于在 agent_trace 里记录触发本次运行的用户提问
+    private String extractLastUserMessage() {
+        List<Message> msgs = this.chatMemory.get(this.chatSessionId);
+        if (msgs == null) return null;
+        for (int i = msgs.size() - 1; i >= 0; i--) {
+            Message m = msgs.get(i);
+            if (m instanceof UserMessage um) {
+                return um.getText();
+            }
+        }
+        return null;
     }
 
     @Override

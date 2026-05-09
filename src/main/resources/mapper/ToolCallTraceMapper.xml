@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.mapper.ToolCallTraceMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.model.entity.ToolCallTrace">
+        <id     property="id"            column="id"             jdbcType="VARCHAR"/>
+        <result property="traceId"       column="trace_id"       jdbcType="VARCHAR"/>
+        <result property="stepId"        column="step_id"        jdbcType="VARCHAR"/>
+        <result property="toolName"      column="tool_name"      jdbcType="VARCHAR"/>
+        <result property="arguments"     column="arguments"      jdbcType="VARCHAR"/>
+        <result property="result"        column="result"         jdbcType="VARCHAR"/>
+        <result property="latencyMs"     column="latency_ms"     jdbcType="BIGINT"/>
+        <result property="status"        column="status"         jdbcType="VARCHAR"/>
+        <result property="errorMessage"  column="error_message"  jdbcType="VARCHAR"/>
+        <result property="startedAt"     column="started_at"     jdbcType="TIMESTAMP"/>
+        <result property="finishedAt"    column="finished_at"    jdbcType="TIMESTAMP"/>
+        <result property="createdAt"     column="created_at"     jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, trace_id, step_id, tool_name,
+        arguments::text AS arguments,
+        result, latency_ms, status, error_message,
+        started_at, finished_at, created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.model.entity.ToolCallTrace"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO tool_call_trace
+            (trace_id, step_id, tool_name, arguments, status, started_at)
+        VALUES
+            (CAST(#{traceId} AS uuid),
+             CAST(#{stepId}  AS uuid),
+             #{toolName},
+             CAST(#{arguments} AS jsonb),
+             #{status},
+             #{startedAt})
+    </insert>
+
+    <select id="selectByTraceId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM tool_call_trace
+        WHERE trace_id = CAST(#{traceId} AS uuid)
+        ORDER BY started_at ASC
+    </select>
+
+    <select id="selectByStepId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM tool_call_trace
+        WHERE step_id = CAST(#{stepId} AS uuid)
+        ORDER BY started_at ASC
+    </select>
+
+    <update id="updateById" parameterType="com.kama.jchatmind.model.entity.ToolCallTrace">
+        UPDATE tool_call_trace
+        <set>
+            <if test="status != null">status = #{status},</if>
+            <if test="result != null">result = #{result},</if>
+            <if test="latencyMs != null">latency_ms = #{latencyMs},</if>
+            <if test="errorMessage != null">error_message = #{errorMessage},</if>
+            <if test="finishedAt != null">finished_at = #{finishedAt},</if>
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+</mapper>

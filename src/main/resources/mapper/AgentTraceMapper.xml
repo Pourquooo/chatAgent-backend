@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.mapper.AgentTraceMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.model.entity.AgentTrace">
+        <id     property="id"                    column="id"                      jdbcType="VARCHAR"/>
+        <result property="sessionId"             column="session_id"              jdbcType="VARCHAR"/>
+        <result property="agentId"               column="agent_id"                jdbcType="VARCHAR"/>
+        <result property="userMessage"           column="user_message"            jdbcType="VARCHAR"/>
+        <result property="status"                column="status"                  jdbcType="VARCHAR"/>
+        <result property="totalSteps"            column="total_steps"             jdbcType="INTEGER"/>
+        <result property="totalLatencyMs"        column="total_latency_ms"        jdbcType="BIGINT"/>
+        <result property="totalPromptTokens"     column="total_prompt_tokens"     jdbcType="INTEGER"/>
+        <result property="totalCompletionTokens" column="total_completion_tokens" jdbcType="INTEGER"/>
+        <result property="errorMessage"          column="error_message"           jdbcType="VARCHAR"/>
+        <result property="startedAt"             column="started_at"              jdbcType="TIMESTAMP"/>
+        <result property="finishedAt"            column="finished_at"             jdbcType="TIMESTAMP"/>
+        <result property="createdAt"             column="created_at"              jdbcType="TIMESTAMP"/>
+        <result property="updatedAt"             column="updated_at"              jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, session_id, agent_id, user_message, status,
+        total_steps, total_latency_ms,
+        total_prompt_tokens, total_completion_tokens,
+        error_message, started_at, finished_at, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.model.entity.AgentTrace"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO agent_trace
+            (session_id, agent_id, user_message, status, started_at)
+        VALUES
+            (CAST(#{sessionId} AS uuid),
+             CAST(#{agentId}   AS uuid),
+             #{userMessage},
+             #{status},
+             #{startedAt})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_trace
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <select id="selectBySessionId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_trace
+        WHERE session_id = CAST(#{sessionId} AS uuid)
+        ORDER BY started_at DESC
+    </select>
+
+    <update id="updateById" parameterType="com.kama.jchatmind.model.entity.AgentTrace">
+        UPDATE agent_trace
+        <set>
+            <if test="status != null">status = #{status},</if>
+            <if test="totalSteps != null">total_steps = #{totalSteps},</if>
+            <if test="totalLatencyMs != null">total_latency_ms = #{totalLatencyMs},</if>
+            <if test="totalPromptTokens != null">total_prompt_tokens = #{totalPromptTokens},</if>
+            <if test="totalCompletionTokens != null">total_completion_tokens = #{totalCompletionTokens},</if>
+            <if test="errorMessage != null">error_message = #{errorMessage},</if>
+            <if test="finishedAt != null">finished_at = #{finishedAt},</if>
+            updated_at = NOW()
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+</mapper>
