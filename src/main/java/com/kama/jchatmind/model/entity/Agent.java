@@ -28,6 +28,9 @@ public class Agent {
     private String allowedKbs;
 
     // JSON String
+    private String allowedSkills;
+
+    // JSON String
     private String chatOptions;
 
     private LocalDateTime createdAt;
@@ -53,6 +56,7 @@ public class Agent {
                 && (this.getModel() == null ? other.getModel() == null : this.getModel().equals(other.getModel()))
                 && (this.getAllowedTools() == null ? other.getAllowedTools() == null : this.getAllowedTools().equals(other.getAllowedTools()))
                 && (this.getAllowedKbs() == null ? other.getAllowedKbs() == null : this.getAllowedKbs().equals(other.getAllowedKbs()))
+                && (this.getAllowedSkills() == null ? other.getAllowedSkills() == null : this.getAllowedSkills().equals(other.getAllowedSkills()))
                 && (this.getChatOptions() == null ? other.getChatOptions() == null : this.getChatOptions().equals(other.getChatOptions()))
                 && (this.getCreatedAt() == null ? other.getCreatedAt() == null : this.getCreatedAt().equals(other.getCreatedAt()))
                 && (this.getUpdatedAt() == null ? other.getUpdatedAt() == null : this.getUpdatedAt().equals(other.getUpdatedAt()));
@@ -69,6 +73,7 @@ public class Agent {
         result = prime * result + ((getModel() == null) ? 0 : getModel().hashCode());
         result = prime * result + ((getAllowedTools() == null) ? 0 : getAllowedTools().hashCode());
         result = prime * result + ((getAllowedKbs() == null) ? 0 : getAllowedKbs().hashCode());
+        result = prime * result + ((getAllowedSkills() == null) ? 0 : getAllowedSkills().hashCode());
         result = prime * result + ((getChatOptions() == null) ? 0 : getChatOptions().hashCode());
         result = prime * result + ((getCreatedAt() == null) ? 0 : getCreatedAt().hashCode());
         result = prime * result + ((getUpdatedAt() == null) ? 0 : getUpdatedAt().hashCode());
@@ -87,6 +92,7 @@ public class Agent {
                 ", model=" + model +
                 ", allowedTools=" + allowedTools +
                 ", allowedKbs=" + allowedKbs +
+                ", allowedSkills=" + allowedSkills +
                 ", chatOptions=" + chatOptions +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +

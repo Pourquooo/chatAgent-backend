@@ -11,6 +11,10 @@ import com.kama.jchatmind.model.vo.AgentVO;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
+
+import java.util.Collections;
+import java.util.List;
 
 @Component
 @AllArgsConstructor
@@ -25,6 +29,10 @@ public class AgentConverter {
         Assert.notNull(agentDTO.getChatOptions(), "Chat options cannot be null");
         Assert.notNull(agentDTO.getModel(), "Model cannot be null");
 
+        List<String> allowedSkills = agentDTO.getAllowedSkills() == null
+                ? Collections.emptyList()
+                : agentDTO.getAllowedSkills();
+
         return Agent.builder()
                 .id(agentDTO.getId())
                 .name(agentDTO.getName())
@@ -33,6 +41,7 @@ public class AgentConverter {
                 .model(agentDTO.getModel().getModelName())
                 .allowedTools(objectMapper.writeValueAsString(agentDTO.getAllowedTools()))
                 .allowedKbs(objectMapper.writeValueAsString(agentDTO.getAllowedKbs()))
+                .allowedSkills(objectMapper.writeValueAsString(allowedSkills))
                 .chatOptions(objectMapper.writeValueAsString(agentDTO.getChatOptions()))
                 .createdAt(agentDTO.getCreatedAt())
                 .updatedAt(agentDTO.getUpdatedAt())
@@ -46,6 +55,10 @@ public class AgentConverter {
         Assert.notNull(agent.getChatOptions(), "Chat options cannot be null");
         Assert.notNull(agent.getModel(), "Model cannot be null");
 
+        List<String> allowedSkills = StringUtils.hasText(agent.getAllowedSkills())
+                ? objectMapper.readValue(agent.getAllowedSkills(), new TypeReference<List<String>>() {})
+                : Collections.emptyList();
+
         return AgentDTO.builder()
                 .id(agent.getId())
                 .name(agent.getName())
@@ -54,6 +67,7 @@ public class AgentConverter {
                 .model(AgentDTO.ModelType.fromModelName(agent.getModel()))
                 .allowedTools(objectMapper.readValue(agent.getAllowedTools(), new TypeReference<>(){}))
                 .allowedKbs(objectMapper.readValue(agent.getAllowedKbs(), new TypeReference<>(){}))
+                .allowedSkills(allowedSkills)
                 .chatOptions(objectMapper.readValue(agent.getChatOptions(), AgentDTO.ChatOptions.class))
                 .createdAt(agent.getCreatedAt())
                 .updatedAt(agent.getUpdatedAt())
@@ -69,6 +83,7 @@ public class AgentConverter {
                 .model(dto.getModel())
                 .allowedTools(dto.getAllowedTools())
                 .allowedKbs(dto.getAllowedKbs())
+                .allowedSkills(dto.getAllowedSkills() == null ? Collections.emptyList() : dto.getAllowedSkills())
                 .chatOptions(dto.getChatOptions())
                 .build();
     }
@@ -91,6 +106,7 @@ public class AgentConverter {
                 .model(AgentDTO.ModelType.fromModelName(request.getModel()))
                 .allowedTools(request.getAllowedTools())
                 .allowedKbs(request.getAllowedKbs())
+                .allowedSkills(request.getAllowedSkills() == null ? Collections.emptyList() : request.getAllowedSkills())
                 .chatOptions(request.getChatOptions())
                 .build();
     }
@@ -116,6 +132,9 @@ public class AgentConverter {
         }
         if (request.getAllowedKbs() != null) {
             dto.setAllowedKbs(request.getAllowedKbs());
+        }
+        if (request.getAllowedSkills() != null) {
+            dto.setAllowedSkills(request.getAllowedSkills());
         }
         if (request.getChatOptions() != null) {
             dto.setChatOptions(request.getChatOptions());

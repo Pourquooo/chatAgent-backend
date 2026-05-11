@@ -23,5 +23,7 @@ public class AgentVO {
 
     private List<String> allowedKbs;
 
+    private List<String> allowedSkills;
+
     private AgentDTO.ChatOptions chatOptions;
 }
