@@ -13,6 +13,7 @@
         <result property="allowedTools" column="allowed_tools" jdbcType="VARCHAR"/>
         <result property="allowedKbs" column="allowed_kbs" jdbcType="VARCHAR"/>
         <result property="allowedSkills" column="allowed_skills" jdbcType="VARCHAR"/>
+        <result property="allowedMcps" column="allowed_mcps" jdbcType="VARCHAR"/>
         <result property="chatOptions" column="chat_options" jdbcType="VARCHAR"/>
         <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
         <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
@@ -21,7 +22,7 @@
     <sql id="Base_Column_List">
         id,name,description,
         system_prompt,model,allowed_tools,
-        allowed_kbs,allowed_skills,chat_options,
+        allowed_kbs,allowed_skills,allowed_mcps,chat_options,
         created_at,updated_at
     </sql>
 
@@ -35,6 +36,7 @@
          allowed_tools,
          allowed_kbs,
          allowed_skills,
+         allowed_mcps,
          chat_options,
          created_at,
          updated_at)
@@ -45,6 +47,7 @@
                 CAST(#{allowedTools} AS jsonb),
                 CAST(#{allowedKbs} AS jsonb),
                 CAST(#{allowedSkills} AS jsonb),
+                CAST(#{allowedMcps} AS jsonb),
                 CAST(#{chatOptions} AS jsonb),
                 #{createdAt},
                 #{updatedAt})
@@ -59,6 +62,7 @@
                allowed_tools::text  AS allowed_tools,
                allowed_kbs::text    AS allowed_kbs,
                allowed_skills::text AS allowed_skills,
+               allowed_mcps::text   AS allowed_mcps,
                chat_options::text   AS chat_options,
                created_at,
                updated_at
@@ -75,6 +79,7 @@
                allowed_tools::text  AS allowed_tools,
                allowed_kbs::text    AS allowed_kbs,
                allowed_skills::text AS allowed_skills,
+               allowed_mcps::text   AS allowed_mcps,
                chat_options::text   AS chat_options,
                created_at,
                updated_at
@@ -114,6 +119,10 @@
 
             <if test="allowedSkills != null">
                 allowed_skills = CAST(#{allowedSkills} AS jsonb),
+            </if>
+
+            <if test="allowedMcps != null">
+                allowed_mcps = CAST(#{allowedMcps} AS jsonb),
             </if>
 
             <if test="chatOptions != null">

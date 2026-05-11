@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kama.jchatmind.mapper.McpServerMapper">
+
+    <resultMap id="BaseResultMap" type="com.kama.jchatmind.model.entity.McpServer">
+        <id     property="id"           column="id"           jdbcType="VARCHAR"/>
+        <result property="name"         column="name"         jdbcType="VARCHAR"/>
+        <result property="description"  column="description"  jdbcType="VARCHAR"/>
+        <result property="transport"    column="transport"    jdbcType="VARCHAR"/>
+        <result property="endpoint"     column="endpoint"     jdbcType="VARCHAR"/>
+        <result property="authType"     column="auth_type"    jdbcType="VARCHAR"/>
+        <result property="authConfig"   column="auth_config"  jdbcType="VARCHAR"/>
+        <result property="enabled"      column="enabled"      jdbcType="BOOLEAN"/>
+        <result property="createdAt"    column="created_at"   jdbcType="TIMESTAMP"/>
+        <result property="updatedAt"    column="updated_at"   jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, name, description, transport, endpoint,
+        auth_type,
+        auth_config::text AS auth_config,
+        enabled, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.kama.jchatmind.model.entity.McpServer"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO mcp_server
+            (name, description, transport, endpoint,
+             auth_type, auth_config, enabled,
+             created_at, updated_at)
+        VALUES
+            (#{name},
+             #{description},
+             #{transport},
+             #{endpoint},
+             #{authType},
+             CAST(#{authConfig} AS jsonb),
+             #{enabled},
+             #{createdAt},
+             #{updatedAt})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mcp_server
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mcp_server
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByIdBatch" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM mcp_server
+        WHERE id IN
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            CAST(#{id} AS uuid)
+        </foreach>
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM mcp_server
+        WHERE id = CAST(#{id} AS uuid)
+    </delete>
+
+    <update id="updateById" parameterType="com.kama.jchatmind.model.entity.McpServer">
+        UPDATE mcp_server
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="transport != null">transport = #{transport},</if>
+            <if test="endpoint != null">endpoint = #{endpoint},</if>
+            <if test="authType != null">auth_type = #{authType},</if>
+            <if test="authConfig != null">auth_config = CAST(#{authConfig} AS jsonb),</if>
+            <if test="enabled != null">enabled = #{enabled},</if>
+            updated_at = NOW()
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+</mapper>

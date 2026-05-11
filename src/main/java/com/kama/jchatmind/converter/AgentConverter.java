@@ -33,6 +33,10 @@ public class AgentConverter {
                 ? Collections.emptyList()
                 : agentDTO.getAllowedSkills();
 
+        List<String> allowedMcps = agentDTO.getAllowedMcps() == null
+                ? Collections.emptyList()
+                : agentDTO.getAllowedMcps();
+
         return Agent.builder()
                 .id(agentDTO.getId())
                 .name(agentDTO.getName())
@@ -42,6 +46,7 @@ public class AgentConverter {
                 .allowedTools(objectMapper.writeValueAsString(agentDTO.getAllowedTools()))
                 .allowedKbs(objectMapper.writeValueAsString(agentDTO.getAllowedKbs()))
                 .allowedSkills(objectMapper.writeValueAsString(allowedSkills))
+                .allowedMcps(objectMapper.writeValueAsString(allowedMcps))
                 .chatOptions(objectMapper.writeValueAsString(agentDTO.getChatOptions()))
                 .createdAt(agentDTO.getCreatedAt())
                 .updatedAt(agentDTO.getUpdatedAt())
@@ -59,6 +64,10 @@ public class AgentConverter {
                 ? objectMapper.readValue(agent.getAllowedSkills(), new TypeReference<List<String>>() {})
                 : Collections.emptyList();
 
+        List<String> allowedMcps = StringUtils.hasText(agent.getAllowedMcps())
+                ? objectMapper.readValue(agent.getAllowedMcps(), new TypeReference<List<String>>() {})
+                : Collections.emptyList();
+
         return AgentDTO.builder()
                 .id(agent.getId())
                 .name(agent.getName())
@@ -68,6 +77,7 @@ public class AgentConverter {
                 .allowedTools(objectMapper.readValue(agent.getAllowedTools(), new TypeReference<>(){}))
                 .allowedKbs(objectMapper.readValue(agent.getAllowedKbs(), new TypeReference<>(){}))
                 .allowedSkills(allowedSkills)
+                .allowedMcps(allowedMcps)
                 .chatOptions(objectMapper.readValue(agent.getChatOptions(), AgentDTO.ChatOptions.class))
                 .createdAt(agent.getCreatedAt())
                 .updatedAt(agent.getUpdatedAt())
@@ -84,6 +94,7 @@ public class AgentConverter {
                 .allowedTools(dto.getAllowedTools())
                 .allowedKbs(dto.getAllowedKbs())
                 .allowedSkills(dto.getAllowedSkills() == null ? Collections.emptyList() : dto.getAllowedSkills())
+                .allowedMcps(dto.getAllowedMcps() == null ? Collections.emptyList() : dto.getAllowedMcps())
                 .chatOptions(dto.getChatOptions())
                 .build();
     }
@@ -107,6 +118,7 @@ public class AgentConverter {
                 .allowedTools(request.getAllowedTools())
                 .allowedKbs(request.getAllowedKbs())
                 .allowedSkills(request.getAllowedSkills() == null ? Collections.emptyList() : request.getAllowedSkills())
+                .allowedMcps(request.getAllowedMcps() == null ? Collections.emptyList() : request.getAllowedMcps())
                 .chatOptions(request.getChatOptions())
                 .build();
     }
@@ -135,6 +147,9 @@ public class AgentConverter {
         }
         if (request.getAllowedSkills() != null) {
             dto.setAllowedSkills(request.getAllowedSkills());
+        }
+        if (request.getAllowedMcps() != null) {
+            dto.setAllowedMcps(request.getAllowedMcps());
         }
         if (request.getChatOptions() != null) {
             dto.setChatOptions(request.getChatOptions());

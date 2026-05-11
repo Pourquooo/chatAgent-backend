@@ -31,6 +31,9 @@ public class Agent {
     private String allowedSkills;
 
     // JSON String
+    private String allowedMcps;
+
+    // JSON String
     private String chatOptions;
 
     private LocalDateTime createdAt;
@@ -57,6 +60,7 @@ public class Agent {
                 && (this.getAllowedTools() == null ? other.getAllowedTools() == null : this.getAllowedTools().equals(other.getAllowedTools()))
                 && (this.getAllowedKbs() == null ? other.getAllowedKbs() == null : this.getAllowedKbs().equals(other.getAllowedKbs()))
                 && (this.getAllowedSkills() == null ? other.getAllowedSkills() == null : this.getAllowedSkills().equals(other.getAllowedSkills()))
+                && (this.getAllowedMcps() == null ? other.getAllowedMcps() == null : this.getAllowedMcps().equals(other.getAllowedMcps()))
                 && (this.getChatOptions() == null ? other.getChatOptions() == null : this.getChatOptions().equals(other.getChatOptions()))
                 && (this.getCreatedAt() == null ? other.getCreatedAt() == null : this.getCreatedAt().equals(other.getCreatedAt()))
                 && (this.getUpdatedAt() == null ? other.getUpdatedAt() == null : this.getUpdatedAt().equals(other.getUpdatedAt()));
@@ -74,6 +78,7 @@ public class Agent {
         result = prime * result + ((getAllowedTools() == null) ? 0 : getAllowedTools().hashCode());
         result = prime * result + ((getAllowedKbs() == null) ? 0 : getAllowedKbs().hashCode());
         result = prime * result + ((getAllowedSkills() == null) ? 0 : getAllowedSkills().hashCode());
+        result = prime * result + ((getAllowedMcps() == null) ? 0 : getAllowedMcps().hashCode());
         result = prime * result + ((getChatOptions() == null) ? 0 : getChatOptions().hashCode());
         result = prime * result + ((getCreatedAt() == null) ? 0 : getCreatedAt().hashCode());
         result = prime * result + ((getUpdatedAt() == null) ? 0 : getUpdatedAt().hashCode());
@@ -93,6 +98,7 @@ public class Agent {
                 ", allowedTools=" + allowedTools +
                 ", allowedKbs=" + allowedKbs +
                 ", allowedSkills=" + allowedSkills +
+                ", allowedMcps=" + allowedMcps +
                 ", chatOptions=" + chatOptions +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +

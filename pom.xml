@@ -103,6 +103,15 @@
             <artifactId>spring-ai-starter-model-zhipuai</artifactId>
         </dependency>
 
+        <!-- Spring AI MCP 客户端 (WebFlux 版支持 SSE / Streamable HTTP) -->
+        <!-- starter 带来 io.modelcontextprotocol.sdk:* + spring-ai-mcp + WebFlux 传输. -->
+        <!-- 通过 application.yaml 关闭自动装配 (spring.ai.mcp.client.enabled=false), -->
+        <!-- 手动构造 McpSyncClient 以支持运行时按 agent 动态选择. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-client-webflux</artifactId>
+        </dependency>
+
         <!-- 邮件发送 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

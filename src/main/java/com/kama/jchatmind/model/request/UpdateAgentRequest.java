@@ -14,5 +14,6 @@ public class UpdateAgentRequest {
     private List<String> allowedTools;
     private List<String> allowedKbs;
     private List<String> allowedSkills;
+    private List<String> allowedMcps;
     private AgentDTO.ChatOptions chatOptions;
 }

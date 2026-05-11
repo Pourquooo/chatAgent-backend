@@ -28,6 +28,8 @@ public class AgentDTO {
 
     private List<String> allowedSkills;
 
+    private List<String> allowedMcps;
+
     private ChatOptions chatOptions;
 
     private LocalDateTime createdAt;
