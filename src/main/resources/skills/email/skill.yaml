@@ -1,0 +1,16 @@
+id: email
+name: 邮件能力
+description: 向指定收件人发送邮件通知
+version: 1.0.0
+triggers:
+  - 邮件
+  - email
+  - 发信
+  - 发送通知
+  - 通知一下
+  - 告知
+systemPromptFragment: |
+  当用户需要联系他人或发出提醒、通知时，使用 emailTool 发送邮件。
+  发送前请确认已获取收件人邮箱、主题、正文，不要编造邮箱地址。
+tools:
+  - emailTool

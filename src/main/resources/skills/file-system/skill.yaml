@@ -1,0 +1,20 @@
+id: file-system
+name: 文件系统
+description: 读写本地文件、创建目录、列出目录内容
+version: 1.0.0
+triggers:
+  - 文件
+  - 目录
+  - 文件夹
+  - 文档
+  - 读取
+  - 写入
+  - 保存到
+  - file
+  - directory
+  - folder
+systemPromptFragment: |
+  当用户需要读写本地文件或操作目录时，使用 fileSystemTool。
+  路径需是用户给定的完整路径或相对路径，不要臆造不存在的路径。
+tools:
+  - fileSystemTool

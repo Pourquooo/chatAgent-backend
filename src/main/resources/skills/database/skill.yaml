@@ -1,0 +1,18 @@
+id: database
+name: 数据库查询
+description: 执行只读 SQL, 从业务数据库中检索结构化信息
+version: 1.0.0
+triggers:
+  - 数据库
+  - 查询
+  - 查一下
+  - 统计
+  - sql
+  - 多少条
+  - 列表
+  - 最近
+systemPromptFragment: |
+  当用户需要从数据库中检索结构化数据时，使用 dataBaseTool。
+  仅执行 SELECT 只读查询，禁止 INSERT、UPDATE、DELETE、DROP 等变更语句。
+tools:
+  - dataBaseTool
