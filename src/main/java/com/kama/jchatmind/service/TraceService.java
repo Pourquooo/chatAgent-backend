@@ -28,6 +28,12 @@ public interface TraceService {
     String PHASE_THINK   = "THINK";
     String PHASE_EXECUTE = "EXECUTE";
 
+    /** 本地 Spring Bean 工具来源标签. */
+    String SOURCE_LOCAL  = "LOCAL";
+
+    /** MCP 工具来源前缀; 完整值为 "MCP:<serverId>". */
+    String SOURCE_MCP_PREFIX = "MCP:";
+
     AgentTrace startTrace(String sessionId, String agentId, String userMessage);
 
     void endTrace(String traceId,
@@ -53,7 +59,8 @@ public interface TraceService {
     ToolCallTrace startToolCall(String traceId,
                                 String stepId,
                                 String toolName,
-                                String arguments);
+                                String arguments,
+                                String source);
 
     void endToolCall(String toolCallId,
                      String status,

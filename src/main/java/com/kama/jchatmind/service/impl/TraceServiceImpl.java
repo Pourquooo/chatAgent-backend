@@ -121,7 +121,7 @@ public class TraceServiceImpl implements TraceService {
     }
 
     @Override
-    public ToolCallTrace startToolCall(String traceId, String stepId, String toolName, String arguments) {
+    public ToolCallTrace startToolCall(String traceId, String stepId, String toolName, String arguments, String source) {
         if (traceId == null || stepId == null) return null;
         try {
             ToolCallTrace tc = ToolCallTrace.builder()
@@ -129,6 +129,7 @@ public class TraceServiceImpl implements TraceService {
                     .stepId(stepId)
                     .toolName(toolName)
                     .arguments(normalizeJson(arguments))
+                    .source(source == null ? SOURCE_LOCAL : source)
                     .status(STATUS_RUNNING)
                     .startedAt(LocalDateTime.now())
                     .build();

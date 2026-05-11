@@ -14,6 +14,7 @@
         <result property="latencyMs"     column="latency_ms"     jdbcType="BIGINT"/>
         <result property="status"        column="status"         jdbcType="VARCHAR"/>
         <result property="errorMessage"  column="error_message"  jdbcType="VARCHAR"/>
+        <result property="source"        column="source"         jdbcType="VARCHAR"/>
         <result property="startedAt"     column="started_at"     jdbcType="TIMESTAMP"/>
         <result property="finishedAt"    column="finished_at"    jdbcType="TIMESTAMP"/>
         <result property="createdAt"     column="created_at"     jdbcType="TIMESTAMP"/>
@@ -22,20 +23,21 @@
     <sql id="Base_Column_List">
         id, trace_id, step_id, tool_name,
         arguments::text AS arguments,
-        result, latency_ms, status, error_message,
+        result, latency_ms, status, error_message, source,
         started_at, finished_at, created_at
     </sql>
 
     <insert id="insert" parameterType="com.kama.jchatmind.model.entity.ToolCallTrace"
             keyColumn="id" keyProperty="id" useGeneratedKeys="true">
         INSERT INTO tool_call_trace
-            (trace_id, step_id, tool_name, arguments, status, started_at)
+            (trace_id, step_id, tool_name, arguments, status, source, started_at)
         VALUES
             (CAST(#{traceId} AS uuid),
              CAST(#{stepId}  AS uuid),
              #{toolName},
              CAST(#{arguments} AS jsonb),
              #{status},
+             #{source},
              #{startedAt})
     </insert>
 

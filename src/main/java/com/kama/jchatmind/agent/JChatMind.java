@@ -61,6 +61,9 @@ public class JChatMind {
     // 可用的工具
     private List<ToolCallback> availableTools;
 
+    /** 工具名 -> 来源 (LOCAL / MCP:<serverId>). Factory 注入. */
+    private Map<String, String> toolSources;
+
     // 可访问的知识库
     private List<KnowledgeBaseDTO> availableKbs;
 
@@ -107,6 +110,10 @@ public class JChatMind {
 
     public void setRuntimeSkillPrompt(String runtimeSkillPrompt) {
         this.runtimeSkillPrompt = runtimeSkillPrompt;
+    }
+
+    public void setToolSources(Map<String, String> toolSources) {
+        this.toolSources = toolSources;
     }
 
     public JChatMind() {
@@ -352,8 +359,11 @@ public class JChatMind {
                 .getResult().getOutput().getToolCalls();
         Map<String, String> toolCallIdToTraceId = new HashMap<>();
         for (AssistantMessage.ToolCall tc : outgoing) {
+            String source = (toolSources != null && toolSources.get(tc.name()) != null)
+                    ? toolSources.get(tc.name())
+                    : TraceService.SOURCE_LOCAL;
             ToolCallTrace traced = traceService.startToolCall(
-                    traceId, execStepId, tc.name(), tc.arguments());
+                    traceId, execStepId, tc.name(), tc.arguments(), source);
             if (traced != null) {
                 toolCallIdToTraceId.put(tc.id(), traced.getId());
             }

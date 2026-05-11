@@ -35,6 +35,9 @@ public class ToolCallTrace {
 
     private String errorMessage;
 
+    /** LOCAL / MCP:&lt;serverId&gt;; 旧数据为 NULL, 前端按 LOCAL 显示 */
+    private String source;
+
     private LocalDateTime startedAt;
 
     private LocalDateTime finishedAt;

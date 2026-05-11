@@ -6,13 +6,18 @@ import com.kama.jchatmind.config.ChatClientRegistry;
 import com.kama.jchatmind.converter.AgentConverter;
 import com.kama.jchatmind.converter.ChatMessageConverter;
 import com.kama.jchatmind.converter.KnowledgeBaseConverter;
+import com.kama.jchatmind.converter.McpServerConverter;
 import com.kama.jchatmind.mapper.AgentMapper;
 import com.kama.jchatmind.mapper.KnowledgeBaseMapper;
+import com.kama.jchatmind.mapper.McpServerMapper;
+import com.kama.jchatmind.mcp.McpClientRegistry;
 import com.kama.jchatmind.model.dto.AgentDTO;
 import com.kama.jchatmind.model.dto.ChatMessageDTO;
 import com.kama.jchatmind.model.dto.KnowledgeBaseDTO;
+import com.kama.jchatmind.model.dto.McpServerDTO;
 import com.kama.jchatmind.model.entity.Agent;
 import com.kama.jchatmind.model.entity.KnowledgeBase;
+import com.kama.jchatmind.model.entity.McpServer;
 import com.kama.jchatmind.service.ChatMessageFacadeService;
 import com.kama.jchatmind.service.SseService;
 import com.kama.jchatmind.service.ToolFacadeService;
@@ -48,6 +53,9 @@ public class JChatMindFactory {
     private final ChatMessageConverter chatMessageConverter;
     private final TraceService traceService;
     private final SkillRegistry skillRegistry;
+    private final McpServerMapper mcpServerMapper;
+    private final McpServerConverter mcpServerConverter;
+    private final McpClientRegistry mcpClientRegistry;
 
     // 运行时 Agent 配置
     private AgentDTO agentConfig;
@@ -63,7 +71,10 @@ public class JChatMindFactory {
             ChatMessageFacadeService chatMessageFacadeService,
             ChatMessageConverter chatMessageConverter,
             TraceService traceService,
-            SkillRegistry skillRegistry
+            SkillRegistry skillRegistry,
+            McpServerMapper mcpServerMapper,
+            McpServerConverter mcpServerConverter,
+            McpClientRegistry mcpClientRegistry
     ) {
         this.chatClientRegistry = chatClientRegistry;
         this.sseService = sseService;
@@ -76,6 +87,9 @@ public class JChatMindFactory {
         this.chatMessageConverter = chatMessageConverter;
         this.traceService = traceService;
         this.skillRegistry = skillRegistry;
+        this.mcpServerMapper = mcpServerMapper;
+        this.mcpServerConverter = mcpServerConverter;
+        this.mcpClientRegistry = mcpClientRegistry;
     }
 
     private Agent loadAgent(String agentId) {
@@ -257,6 +271,54 @@ public class JChatMindFactory {
         return new SkillResolveResult(runtimeTools, null);
     }
 
+    /**
+     * 按 agentConfig.allowedMcps 拉取启用的 McpServerDTO 列表.
+     * 未配置 / 全部禁用 / 查询失败 -> 返回空集合, 不阻塞 Agent 主流程.
+     */
+    private List<McpServerDTO> resolveRuntimeMcpServers(AgentDTO agentConfig) {
+        List<String> ids = agentConfig.getAllowedMcps();
+        if (ids == null || ids.isEmpty()) return Collections.emptyList();
+        try {
+            List<McpServer> entities = mcpServerMapper.selectByIdBatch(ids);
+            if (entities == null || entities.isEmpty()) return Collections.emptyList();
+            List<McpServerDTO> result = new ArrayList<>();
+            for (McpServer e : entities) {
+                if (!Boolean.TRUE.equals(e.getEnabled())) continue;
+                try {
+                    result.add(mcpServerConverter.toDTO(e));
+                } catch (JsonProcessingException jpe) {
+                    log.warn("[mcp] decode authConfig failed, skip id={}", e.getId(), jpe);
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            log.warn("[mcp] load mcp servers failed, allowedMcps={}", ids, e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 组装 MCP 远端工具 Callback 并构造 toolName -> source 映射.
+     * 返回 record, 避免多出参.
+     */
+    private record McpResolveResult(List<ToolCallback> callbacks, Map<String, String> toolNameToSource) {}
+
+    private McpResolveResult resolveMcpCallbacks(List<McpServerDTO> servers) {
+        if (servers == null || servers.isEmpty()) {
+            return new McpResolveResult(Collections.emptyList(), Collections.emptyMap());
+        }
+        List<McpClientRegistry.McpToolBinding> bindings = mcpClientRegistry.resolveCallbacks(servers);
+        List<ToolCallback> callbacks = new ArrayList<>(bindings.size());
+        Map<String, String> toolNameToSource = new HashMap<>();
+        for (McpClientRegistry.McpToolBinding b : bindings) {
+            callbacks.add(b.callback());
+            // 模型看到的是加过前缀的工具名; trace 里按模型上报的 tool_call.name 回查
+            String modelSideName = b.callback().getToolDefinition().name();
+            toolNameToSource.put(modelSideName, TraceService.SOURCE_MCP_PREFIX + b.serverId());
+        }
+        return new McpResolveResult(callbacks, toolNameToSource);
+    }
+
     private String extractLatestUserMessage(List<Message> memory) {
         if (memory == null) return null;
         for (int i = memory.size() - 1; i >= 0; i--) {
@@ -336,8 +398,15 @@ public class JChatMindFactory {
         String latestUserMessage = extractLatestUserMessage(memory);
         // 解析 agent 支持的工具调用 + skill 提示片段
         SkillResolveResult resolved = resolveRuntimeTools(agentConfig, latestUserMessage);
-        // 将工具调用转换成 ToolCallback 的形式
-        List<ToolCallback> toolCallbacks = buildToolCallbacks(resolved.tools());
+        // 将本地工具调用转换成 ToolCallback 的形式
+        List<ToolCallback> toolCallbacks = new ArrayList<>(buildToolCallbacks(resolved.tools()));
+
+        // ===== MCP 融合 =====
+        List<McpServerDTO> mcpServers = resolveRuntimeMcpServers(agentConfig);
+        McpResolveResult mcp = resolveMcpCallbacks(mcpServers);
+        toolCallbacks.addAll(mcp.callbacks());
+        log.info("[factory] agent={} tools local={}, mcp={}",
+                agentConfig.getId(), toolCallbacks.size() - mcp.callbacks().size(), mcp.callbacks().size());
 
         JChatMind jChatMind = buildAgentRuntime(
                 agent,
@@ -347,6 +416,7 @@ public class JChatMindFactory {
                 chatSessionId
         );
         jChatMind.setRuntimeSkillPrompt(resolved.promptFragment());
+        jChatMind.setToolSources(mcp.toolNameToSource());
         return jChatMind;
     }
 }
