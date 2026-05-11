@@ -121,7 +121,52 @@ public class JChatMindFactory {
                     throw new IllegalStateException("不支持的 Message 类型");
             }
         }
+        trimDanglingToolCalls(memory);
         return memory;
+    }
+
+    /**
+     * 清理头部: 滑动窗口 / 历史残缺可能导致 assistant(tool_calls) 与 tool(response) 配对不全,
+     * 而 DeepSeek 等 API 会返回 400 "insufficient tool messages". 这里在头部丢掉:
+     *   1. 孤儿 tool response (前置 assistant 被截掉)
+     *   2. 后续 tool responses 不足以覆盖其 tool_calls 的 assistant.
+     */
+    private void trimDanglingToolCalls(List<Message> memory) {
+        while (!memory.isEmpty()) {
+            Message head = memory.get(0);
+            if (head instanceof ToolResponseMessage) {
+                log.info("[memory] drop dangling tool response at head");
+                memory.remove(0);
+                continue;
+            }
+            if (head instanceof AssistantMessage am) {
+                List<AssistantMessage.ToolCall> calls = am.getToolCalls();
+                if (calls != null && !calls.isEmpty() && !hasAllToolResponses(memory, calls)) {
+                    log.info("[memory] drop assistant with incomplete tool responses at head");
+                    memory.remove(0);
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+
+    private boolean hasAllToolResponses(List<Message> memory, List<AssistantMessage.ToolCall> calls) {
+        Set<String> required = new HashSet<>();
+        for (AssistantMessage.ToolCall c : calls) {
+            required.add(c.id());
+        }
+        for (int i = 1; i < memory.size() && !required.isEmpty(); i++) {
+            Message m = memory.get(i);
+            if (m instanceof ToolResponseMessage trm) {
+                for (ToolResponseMessage.ToolResponse resp : trm.getResponses()) {
+                    required.remove(resp.id());
+                }
+            } else {
+                break;
+            }
+        }
+        return required.isEmpty();
     }
 
     private AgentDTO toAgentConfig(Agent agent) {
