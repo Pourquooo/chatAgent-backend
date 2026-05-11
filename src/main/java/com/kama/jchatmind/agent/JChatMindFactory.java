@@ -17,6 +17,8 @@ import com.kama.jchatmind.service.ChatMessageFacadeService;
 import com.kama.jchatmind.service.SseService;
 import com.kama.jchatmind.service.ToolFacadeService;
 import com.kama.jchatmind.service.TraceService;
+import com.kama.jchatmind.skill.SkillMetadata;
+import com.kama.jchatmind.skill.SkillRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -45,6 +47,7 @@ public class JChatMindFactory {
     private final ChatMessageFacadeService chatMessageFacadeService;
     private final ChatMessageConverter chatMessageConverter;
     private final TraceService traceService;
+    private final SkillRegistry skillRegistry;
 
     // 运行时 Agent 配置
     private AgentDTO agentConfig;
@@ -59,7 +62,8 @@ public class JChatMindFactory {
             ToolFacadeService toolFacadeService,
             ChatMessageFacadeService chatMessageFacadeService,
             ChatMessageConverter chatMessageConverter,
-            TraceService traceService
+            TraceService traceService,
+            SkillRegistry skillRegistry
     ) {
         this.chatClientRegistry = chatClientRegistry;
         this.sseService = sseService;
@@ -71,6 +75,7 @@ public class JChatMindFactory {
         this.chatMessageFacadeService = chatMessageFacadeService;
         this.chatMessageConverter = chatMessageConverter;
         this.traceService = traceService;
+        this.skillRegistry = skillRegistry;
     }
 
     private Agent loadAgent(String agentId) {
@@ -150,27 +155,72 @@ public class JChatMindFactory {
         return kbDTOs;
     }
 
-    private List<Tool> resolveRuntimeTools(AgentDTO agentConfig) {
-        // 固定工具（系统强制）
-        List<Tool> runtimeTools = new ArrayList<>(toolFacadeService.getFixedTools());
+    /** 一次 run 的 skill 解析结果: 本次激活的工具集 + 拼好的提示词片段. */
+    private record SkillResolveResult(List<Tool> tools, String promptFragment) {}
 
-        // 可选工具（按 Agent 配置）
-        List<String> allowedToolNames = agentConfig.getAllowedTools();
-        if (allowedToolNames == null || allowedToolNames.isEmpty()) {
-            return runtimeTools;
-        }
+    private SkillResolveResult resolveRuntimeTools(AgentDTO agentConfig, String userMessage) {
+        // 固定工具（系统强制, 无论什么路径都加上）
+        List<Tool> runtimeTools = new ArrayList<>(toolFacadeService.getFixedTools());
 
         Map<String, Tool> optionalToolMap = toolFacadeService.getOptionalTools()
                 .stream()
                 .collect(Collectors.toMap(Tool::getName, Function.identity()));
 
-        for (String toolName : allowedToolNames) {
-            Tool tool = optionalToolMap.get(toolName);
-            if (tool != null) {
-                runtimeTools.add(tool);
+        List<String> allowedSkillIds = agentConfig.getAllowedSkills();
+
+        // ===== Skill 路径: allowedSkills 非空时按关键词激活 =====
+        if (allowedSkillIds != null && !allowedSkillIds.isEmpty()) {
+            List<SkillMetadata> activated = skillRegistry.activate(allowedSkillIds, userMessage);
+
+            Set<String> seenToolNames = new HashSet<>();
+            StringBuilder promptBuilder = new StringBuilder();
+            for (SkillMetadata skill : activated) {
+                if (skill.getTools() != null) {
+                    for (String toolName : skill.getTools()) {
+                        if (!seenToolNames.add(toolName)) continue;
+                        Tool tool = optionalToolMap.get(toolName);
+                        if (tool != null) {
+                            runtimeTools.add(tool);
+                        } else {
+                            log.warn("[skill] '{}' references missing tool bean '{}'", skill.getId(), toolName);
+                        }
+                    }
+                }
+                if (StringUtils.hasText(skill.getSystemPromptFragment())) {
+                    promptBuilder.append("- [").append(skill.getId()).append("] ")
+                            .append(skill.getSystemPromptFragment().trim())
+                            .append("\n");
+                }
+            }
+
+            log.info("[skill] agent={} activated {} skill(s), {} optional tool(s)",
+                    agentConfig.getId(), activated.size(), seenToolNames.size());
+
+            return new SkillResolveResult(runtimeTools, promptBuilder.toString());
+        }
+
+        // ===== 降级路径: 老 agent 仍按 allowedTools 精细控制 =====
+        List<String> allowedToolNames = agentConfig.getAllowedTools();
+        if (allowedToolNames != null && !allowedToolNames.isEmpty()) {
+            for (String toolName : allowedToolNames) {
+                Tool tool = optionalToolMap.get(toolName);
+                if (tool != null) {
+                    runtimeTools.add(tool);
+                }
             }
         }
-        return runtimeTools;
+        return new SkillResolveResult(runtimeTools, null);
+    }
+
+    private String extractLatestUserMessage(List<Message> memory) {
+        if (memory == null) return null;
+        for (int i = memory.size() - 1; i >= 0; i--) {
+            Message m = memory.get(i);
+            if (m instanceof UserMessage um) {
+                return um.getText();
+            }
+        }
+        return null;
     }
 
     private List<ToolCallback> buildToolCallbacks(List<Tool> runtimeTools) {
@@ -237,17 +287,21 @@ public class JChatMindFactory {
 
         // 解析 agent 的支持的知识库
         List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
-        // 解析 agent 支持的工具调用
-        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig);
+        // 从 memory 中取最近一条 UserMessage, 驱动 Skill 的关键词激活
+        String latestUserMessage = extractLatestUserMessage(memory);
+        // 解析 agent 支持的工具调用 + skill 提示片段
+        SkillResolveResult resolved = resolveRuntimeTools(agentConfig, latestUserMessage);
         // 将工具调用转换成 ToolCallback 的形式
-        List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
+        List<ToolCallback> toolCallbacks = buildToolCallbacks(resolved.tools());
 
-        return buildAgentRuntime(
+        JChatMind jChatMind = buildAgentRuntime(
                 agent,
                 memory,
                 knowledgeBases,
                 toolCallbacks,
                 chatSessionId
         );
+        jChatMind.setRuntimeSkillPrompt(resolved.promptFragment());
+        return jChatMind;
     }
 }

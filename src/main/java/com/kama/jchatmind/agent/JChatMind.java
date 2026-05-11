@@ -100,6 +100,15 @@ public class JChatMind {
     private int totalPromptTokens;        // 累计 prompt tokens
     private int totalCompletionTokens;    // 累计 completion tokens
 
+    // ========== Skill 相关字段 ==========
+    // 本次 run 激活的 skill 提示片段 (已拼接), 仅注入到 think 提示词, 不进聊天记忆.
+    // 由 JChatMindFactory 在构造实例后通过 setter 注入.
+    private String runtimeSkillPrompt;
+
+    public void setRuntimeSkillPrompt(String runtimeSkillPrompt) {
+        this.runtimeSkillPrompt = runtimeSkillPrompt;
+    }
+
     public JChatMind() {
     }
 
@@ -252,7 +261,13 @@ public class JChatMind {
                     【额外信息】
                     - 你目前拥有的知识库列表以及描述：%s
                     - 如果有缺失的上下文时，优先从知识库中进行搜索
-                    """.formatted(this.availableKbs);
+                    %s
+                    """.formatted(
+                    this.availableKbs,
+                    StringUtils.hasText(this.runtimeSkillPrompt)
+                            ? "【本次激活的技能】\n" + this.runtimeSkillPrompt
+                            : ""
+            );
 
             // 将 thinkPrompt 通过 .user(thinkPrompt) 的方式构造进入 chatClient 中
             // 既能让每次 messageList 的最后一条是 本条提示词，
